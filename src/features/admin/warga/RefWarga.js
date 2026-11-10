@@ -189,7 +189,7 @@ export default function RefWarga() {
 
       {showFormModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
+          <div className="w-full max-w-3xl lg:max-w-4xl overflow-y-auto rounded-2xl bg-white p-8 shadow-2xl border border-line">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-bold text-ink">

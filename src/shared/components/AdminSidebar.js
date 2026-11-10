@@ -14,6 +14,8 @@ import {
   IconMenu,
   IconClose,
   IconLogout,
+  IconWhatsApp,
+  IconCloudSync,
 } from "./icons";
 
 const navItems = [
@@ -22,7 +24,9 @@ const navItems = [
   { to: "pengeluaran", label: "Pengeluaran", icon: IconPengeluaran },
   { to: "laporan-bulanan", label: "Rekap Bulanan", icon: IconLaporan },
   { to: "daftar-rekap", label: "Daftar Rekap", icon: IconRekap },
-  { to: "kekurangan-bayar", label: "Kekurangan Bayar", icon: IconKekurangan },
+  { to: "kekurangan-bayar-tahun", label: "Kekurangan Bayar", icon: IconKekurangan },
+  { to: "status-whatsapp", label: "Status WhatsApp", icon: IconWhatsApp },
+  { to: "sinkron-cloud", label: "Sinkronisasi Cloud", icon: IconCloudSync },
 ];
 
 const dataItems = [
@@ -74,7 +78,7 @@ function SidebarContent({
   );
   const [flyoutPos, setFlyoutPos] = useState(null);
 
-  const isActive = (slug) => pathname.endsWith(`/${slug}`);
+  const isActive = (slug) => pathname.endsWith(`/${slug}`) || (slug === "kekurangan-bayar-tahun" && pathname.includes("kekurangan-bayar"));
   const dataActive = dataItems.some((item) => isActive(item.to));
 
   const closeDataMenu = () => {

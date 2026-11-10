@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ENDPOINT_BASE_URL, homeList, months } from "../../../../shared/config";
 import { rupiahFormat } from "../../../../shared/helpers/MoneyHeper";
 import Card from "../../../../shared/components/ui/Card";
 import Button from "../../../../shared/components/ui/Button";
 import Badge from "../../../../shared/components/ui/Badge";
 import Spinner from "../../../../shared/components/ui/Spinner";
+import Swal from "sweetalert2";
 
 export default function KekuranganBayarTahun() {
+  const navigate = useNavigate();
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(String(currentYear));
   const [loading, setLoading] = useState(false);
@@ -26,13 +29,32 @@ export default function KekuranganBayarTahun() {
     return Array.from({ length: 11 }, (_, idx) => String(start + idx));
   }, [currentYear]);
 
+  const [wargaList, setWargaList] = useState(homeList);
+
+  useEffect(() => {
+    const fetchRef = async () => {
+      try {
+        const res = await fetch(`${ENDPOINT_BASE_URL}/api/ref-warga`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.status === "OK" && Array.isArray(json.data) && json.data.length > 0) {
+            setWargaList(json.data);
+          }
+        }
+      } catch (e) {
+        console.warn("Gagal memuat ref-warga:", e);
+      }
+    };
+    fetchRef();
+  }, []);
+
   const homeMap = useMemo(() => {
     const map = {};
-    for (const home of homeList) {
+    for (const home of wargaList) {
       map[String(home.nomor)] = home;
     }
     return map;
-  }, []);
+  }, [wargaList]);
 
   const fetchKekuranganTahun = async (selectedYear) => {
     setLoading(true);
@@ -193,6 +215,83 @@ export default function KekuranganBayarTahun() {
     return `📢 *Pemberitahuan Resmi Pengurus Jimpitan*\n\nYth. Warga Perumahan Griya Bhina Karya Tempel 2 Nomor *${selectedDetail.nomor_rumah}*\n\nTanggal: *${tanggal}*\n\n*Ini adalah pesan WhatsApp resmi dari Pengurus Jimpitan Perumahan Griya Bhina Karya Tempel 2. Mohon dapat membalas pesan ini dengan balasan apa saja sebagai tanda pesan telah diterima. Kami juga memohon untuk tidak melaporkan pesan ini sebagai SPAM agar layanan Broadcast WhatsApp pengurus tetap dapat berfungsi dengan baik.*\n\nKami menginformasikan bahwa masih terdapat administrasi jimpitan yang perlu dilengkapi sebagai berikut:\n\n🏠 Nomor Rumah : *${selectedDetail.nomor_rumah}*\n👤 Nama : *${homeMap[selectedDetail.nomor_rumah]?.nama || "-"}*\n\n💰 Rincian kekurangan per bulan:\n${rincian}\n\n*Total: ${rupiahFormat(totalNominal)}*\n\n*Cara Pembayaran:*\n\n*A. Tunai (Cash)*\n• Rumah No. 43 (Bapak Topik)\n• Rumah No. 33 (Roni A)\n\n*B. Transfer DANA*\n089673378055\na.n. Roni Adiatmoko\n\n*(Mohon konfirmasi setelah melakukan pembayaran.)*\n\n📝 *Catatan:* Apabila terdapat kesalahan atau ketidaksesuaian pada pencatatan jimpitan, silakan membalas pesan ini. Pengurus akan melakukan pengecekan dan konfirmasi kembali bersama petugas ronda harian untuk dilakukan koreksi apabila diperlukan.\n\n🙏 Terima kasih kepada seluruh warga yang telah berpartisipasi membayar jimpitan. Dana yang terkumpul digunakan untuk mendukung kebutuhan, keamanan, perawatan, dan pembangunan lingkungan yang manfaatnya dapat dirasakan bersama oleh seluruh warga.\n\nHormat kami,\n\n*Pengurus Jimpitan*\n*Perumahan Griya Bhina Karya Tempel 2*`;
   };
 
+  const handleCopyTagihanWa = async () => {
+    const monthObj = months.find((m) => m.value === selectedEndMonth);
+    const monthLabel = monthObj ? monthObj.label : "";
+
+    const listTagihan = filteredData
+      .map((item) => {
+        const days = calculateCumulativeTotal(item);
+        if (days <= 0) return null;
+        const nominal = days * 500;
+        const nama = homeMap[item.nomor_rumah]?.nama || "-";
+        const formattedNominal = rupiahFormat(nominal)
+          .replace(/\u00A0/g, " ")
+          .replace(/,00$/, "");
+        return {
+          nomor: Number(item.nomor_rumah) || 0,
+          text: `No. ${item.nomor_rumah} - ${nama} | ${formattedNominal}`,
+        };
+      })
+      .filter(Boolean);
+
+    listTagihan.sort((a, b) => a.nomor - b.nomor);
+
+    if (listTagihan.length === 0) {
+      Swal.fire({
+        title: "Tidak Ada Tagihan",
+        text: `Tidak ada warga yang memiliki tagihan s/d ${monthLabel} ${year} untuk filter ini.`,
+        icon: "info",
+      });
+      return;
+    }
+
+    const copyText = [
+      `Kekurangan bayar jimpitan s/d ${monthLabel} ${year}`,
+      "",
+      ...listTagihan.map((t) => t.text),
+    ].join("\n");
+
+    let success = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(copyText);
+        success = true;
+      }
+    } catch (e) {
+      console.warn("navigator.clipboard failed, trying fallback:", e);
+    }
+
+    if (!success) {
+      try {
+        const textArea = document.createElement("textarea");
+        textArea.value = copyText;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        success = document.execCommand("copy");
+        textArea.remove();
+      } catch (err) {
+        console.error("Fallback copy failed:", err);
+      }
+    }
+
+    if (success) {
+      Swal.fire({
+        title: "Berhasil Disalin!",
+        text: `Data tagihan (${listTagihan.length} rumah) s/d ${monthLabel} ${year} telah disalin ke clipboard.`,
+        icon: "success",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } else {
+      Swal.fire("Gagal", "Gagal menyalin teks ke clipboard.", "error");
+    }
+  };
+
   const handleCopyMessage = async () => {
     const pesan = buildWhatsappMessage();
     if (!pesan) return;
@@ -243,9 +342,36 @@ export default function KekuranganBayarTahun() {
   return (
     <div className="space-y-4">
       <Card>
-        <h1 className="text-xl font-bold text-ink mb-6">
-          Rekap Kekurangan Bayar per Tahun
-        </h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <div>
+            <h1 className="text-xl font-bold text-ink">
+              Rekap Kekurangan Bayar per Tahun
+            </h1>
+            <p className="text-xs text-muted mt-1">
+              Pantau akumulasi kekurangan bayar jimpitan warga per tahun dan buka rincian per bulan
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              className="flex items-center gap-1.5 text-xs !py-2 !px-3"
+              onClick={() => {
+                const padMonth = String(selectedEndMonth).padStart(2, "0");
+                navigate(`/admin/kekurangan-bayar?period=${year}-${padMonth}`);
+              }}
+              title={`Buka laporan kekurangan bayar bulan ${months.find((m) => m.value === selectedEndMonth)?.label} ${year}`}
+            >
+              <span>📅</span> Buka Kekurangan Bulan {months.find((m) => m.value === selectedEndMonth)?.label}
+            </Button>
+            <Button
+              className="flex items-center gap-1.5 text-xs !py-2 !px-3.5"
+              onClick={() => navigate("/admin/kekurangan-bayar")}
+            >
+              <span>🔎</span> Kekurangan Per Bulan
+            </Button>
+          </div>
+        </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
           <div className="flex flex-col gap-2">
@@ -271,7 +397,7 @@ export default function KekuranganBayarTahun() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium text-ink mr-2">Filter Status:</span>
             {[
@@ -299,6 +425,29 @@ export default function KekuranganBayarTahun() {
               </label>
             ))}
           </div>
+
+          <Button
+            variant="success"
+            onClick={handleCopyTagihanWa}
+            className="flex items-center gap-2 !bg-emerald-600 hover:!bg-emerald-700 !text-white text-sm py-2 px-3.5 shadow-sm"
+            title="Salin rekap tagihan jimpitan sesuai filter untuk WhatsApp"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+              />
+            </svg>
+            <span>Salin Tagihan WA</span>
+          </Button>
         </div>
       </Card>
 
@@ -319,28 +468,67 @@ export default function KekuranganBayarTahun() {
                 <th className="px-3 py-3">Penghuni</th>
                 <th className="px-3 py-3">Status Dihuni</th>
                 <th className="px-3 py-3">
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col items-center gap-1.5">
                     <span>Total sampai bulan</span>
-                    <select
-                      value={selectedEndMonth}
-                      onChange={(e) =>
-                        setSelectedEndMonth(Number(e.target.value))
-                      }
-                      className="w-24 rounded border border-line bg-white px-2 py-1 text-xs text-ink normal-case"
-                    >
-                      {months.map((month) => (
-                        <option key={month.value} value={month.value}>
-                          {month.label}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-1.5">
+                      <select
+                        value={selectedEndMonth}
+                        onChange={(e) =>
+                          setSelectedEndMonth(Number(e.target.value))
+                        }
+                        className="w-24 rounded border border-line bg-white px-2 py-1 text-xs text-ink normal-case"
+                      >
+                        {months.map((month) => (
+                          <option key={month.value} value={month.value}>
+                            {month.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={handleCopyTagihanWa}
+                        className="inline-flex items-center justify-center p-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition shadow-sm"
+                        title="Salin rekap tagihan s/d bulan ini ke WA"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-3.5 w-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </th>
-                {months.map((month) => (
-                  <th key={month.value} className="px-3 py-3">
-                    {month.label}
-                  </th>
-                ))}
+                {months.map((month) => {
+                  const isSelectedMonth = month.value === selectedEndMonth;
+                  return (
+                    <th key={month.value} className="px-2 py-3 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const padMonth = String(month.value).padStart(2, "0");
+                          navigate(`/admin/kekurangan-bayar?period=${year}-${padMonth}`);
+                        }}
+                        className={`group inline-flex items-center gap-1 text-xs transition hover:text-accent hover:underline ${
+                          isSelectedMonth ? "text-accent font-bold" : "text-muted font-semibold"
+                        }`}
+                        title={`Buka kekurangan bayar bulan ${month.label} ${year}`}
+                      >
+                        <span>{month.label}</span>
+                        <span className="text-[10px] text-accent opacity-60 group-hover:opacity-100">↗</span>
+                      </button>
+                    </th>
+                  );
+                })}
                 <th className="px-3 py-3">Total</th>
               </tr>
             </thead>
