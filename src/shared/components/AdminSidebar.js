@@ -1,5 +1,8 @@
+import EnvBadge from "./EnvBadge";
+import WhatsAppHeaderStatus from "./WhatsAppHeaderStatus";
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import ChangePasswordModal from "../../features/auth/ChangePasswordModal";
 import {
   IconRapel,
   IconHitungUlang,
@@ -9,28 +12,33 @@ import {
   IconKekurangan,
   IconWarga,
   IconKalender,
+  IconJadwal,
   IconBroadcast,
   IconChevron,
   IconMenu,
   IconClose,
+  IconKey,
   IconLogout,
   IconWhatsApp,
   IconCloudSync,
+  IconUpdate,
 } from "./icons";
 
 const navItems = [
   { to: "rapel-list", label: "Daftar Rapel", icon: IconRapel },
   { to: "detail-harian", label: "Hitung Ulang Harian", icon: IconHitungUlang },
+  { to: "jadwal-ronda", label: "Punggawa Ronda", icon: IconJadwal },
   { to: "pengeluaran", label: "Pengeluaran", icon: IconPengeluaran },
   { to: "laporan-bulanan", label: "Rekap Bulanan", icon: IconLaporan },
-  { to: "daftar-rekap", label: "Daftar Rekap", icon: IconRekap },
+  { to: "daftar-rekap", label: "Laporan Tahunan", icon: IconRekap },
   { to: "kekurangan-bayar-tahun", label: "Kekurangan Bayar", icon: IconKekurangan },
   { to: "status-whatsapp", label: "Status WhatsApp", icon: IconWhatsApp },
   { to: "sinkron-cloud", label: "Sinkronisasi Cloud", icon: IconCloudSync },
+  { to: "update-aplikasi", label: "Update Aplikasi", icon: IconUpdate },
 ];
 
 const dataItems = [
-  { to: "list-warga", label: "Warga", icon: IconWarga },
+  { to: "ref-warga", label: "Warga", icon: IconWarga },
   { to: "tanggal-putih", label: "Tanggal Putih", icon: IconKalender },
   { to: "template-broadcast", label: "Template Broadcast", icon: IconBroadcast },
 ];
@@ -73,6 +81,7 @@ function SidebarContent({
   collapsed = false,
   onToggleCollapse,
 }) {
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [dataOpen, setDataOpen] = useState(
     dataItems.some((item) => pathname.endsWith(item.to))
   );
@@ -101,17 +110,24 @@ function SidebarContent({
           collapsed ? "justify-center px-3" : "px-5"
         }`}
       >
-        <LogoMark />
-        {!collapsed && (
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-base font-bold leading-tight text-white">
-              Jimpitan
+        <Link
+          to="/admin"
+          onClick={onNavigate}
+          title="Ke Dashboard Admin"
+          className="flex min-w-0 flex-1 items-center gap-2 transition hover:opacity-80"
+        >
+          <LogoMark />
+          {!collapsed && (
+            <div className="min-w-0 flex-1 text-left">
+              <div className="truncate text-base font-bold leading-tight text-white">
+                Jimpitan
+              </div>
+              <div className="truncate text-xs font-medium text-slate-400">
+                GBK Tempel 2
+              </div>
             </div>
-            <div className="truncate text-xs font-medium text-slate-400">
-              GBK Tempel 2
-            </div>
-          </div>
-        )}
+          )}
+        </Link>
         {onToggleCollapse && (
           <button
             type="button"
@@ -130,7 +146,7 @@ function SidebarContent({
       </div>
 
       <nav
-        className={`flex-1 space-y-1 overflow-y-auto ${
+        className={`flex-1 space-y-1 overflow-y-auto custom-sidebar-scroll ${
           collapsed ? "px-2" : "px-3"
         }`}
       >
@@ -209,15 +225,34 @@ function SidebarContent({
       </nav>
 
       <div
-        className={`border-t border-white/10 py-4 ${
+        className={`border-t border-white/10 py-3 space-y-1 ${
           collapsed ? "px-2" : "px-3"
         }`}
       >
+        {!collapsed && (
+          <div className="px-2 py-1.5 mb-1 rounded-lg bg-white/5 border border-white/5 text-xs">
+            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Login Sebagai</p>
+            <p className="text-white font-semibold truncate">{localStorage.getItem("fullname") || "Admin"}</p>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowChangePassword(true)}
+          title={collapsed ? "Ganti Sandi" : undefined}
+          className={`flex w-full items-center rounded-lg py-2 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white ${
+            collapsed ? "justify-center px-0" : "gap-3 px-3.5"
+          }`}
+        >
+          <IconKey />
+          {!collapsed && "Ganti Sandi"}
+        </button>
+
         <button
           type="button"
           onClick={onLogout}
           title={collapsed ? "Keluar" : undefined}
-          className={`flex w-full items-center rounded-lg py-2.5 text-sm font-medium text-slate-300 transition hover:bg-white/5 hover:text-white ${
+          className={`flex w-full items-center rounded-lg py-2 text-sm font-medium text-rose-300 transition hover:bg-rose-500/10 hover:text-rose-200 ${
             collapsed ? "justify-center px-0" : "gap-3 px-3.5"
           }`}
         >
@@ -225,6 +260,11 @@ function SidebarContent({
           {!collapsed && "Keluar"}
         </button>
       </div>
+
+      <ChangePasswordModal
+        isOpen={showChangePassword}
+        onClose={() => setShowChangePassword(false)}
+      />
     </div>
   );
 }
@@ -237,18 +277,26 @@ export default function AdminSidebar({ onLogout, collapsed, onToggleCollapse }) 
     <>
       {/* Mobile top bar */}
       <div className="flex items-center justify-between bg-ink px-4 py-3 md:hidden">
-        <div className="flex items-center gap-2">
+        <Link
+          to="/admin"
+          title="Ke Dashboard Admin"
+          className="flex items-center gap-2 transition hover:opacity-80"
+        >
           <LogoMark size={28} />
           <span className="text-base font-bold text-white">Jimpitan</span>
+        </Link>
+        <div className="flex items-center gap-2">
+          <EnvBadge isMobile />
+          <WhatsAppHeaderStatus isMobile />
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            aria-label="Buka menu"
+            className="text-slate-300 p-1"
+          >
+            <IconMenu />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          aria-label="Buka menu"
-          className="text-slate-300"
-        >
-          <IconMenu />
-        </button>
       </div>
 
       {/* Mobile drawer (always full-width, never collapsed) */}

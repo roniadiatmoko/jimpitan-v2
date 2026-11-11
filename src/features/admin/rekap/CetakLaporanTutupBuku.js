@@ -1,6 +1,26 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { rupiahFormat, terbilang } from "../../../shared/helpers/MoneyHeper";
 import Button from "../../../shared/components/ui/Button";
+import { ENDPOINT_BASE_URL } from "../../../shared/config";
+
+function formatTanggalIndo(dateStr) {
+  if (!dateStr) return "-";
+  try {
+    const raw = dateStr.includes("T") ? dateStr.split("T")[0] : dateStr;
+    const [y, m, d] = raw.split("-");
+    if (y && m && d) {
+      const monthNames = [
+        "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+        "Jul", "Agu", "Sep", "Okt", "Nov", "Des",
+      ];
+      const monthIdx = parseInt(m, 10) - 1;
+      return `${parseInt(d, 10)} ${monthNames[monthIdx] || m} ${y}`;
+    }
+    return raw;
+  } catch {
+    return dateStr;
+  }
+}
 
 export default function CetakLaporanTutupBuku({
   year,
@@ -21,18 +41,52 @@ export default function CetakLaporanTutupBuku({
         year: "numeric",
       }).format(new Date());
 
-  const [lokasi, setLokasi] = useState("Tempel 2");
+  const [namaOrganisasi, setNamaOrganisasi] = useState("PAGUYUBAN WARGA GBK TEMPEL 2");
+  const [alamatSekretariat, setAlamatSekretariat] = useState(
+    "Sekretariat: Perumahan Griya Bhina Karya (GBK) Tempel 2, Gatak, Sukoharjo, Jawa Tengah"
+  );
+  const [lokasi, setLokasi] = useState("Sukoharjo");
   const [tanggalDokumen, setTanggalDokumen] = useState(defaultTanggalDokumen);
   const [namaKetua, setNamaKetua] = useState("Ketua Paguyuban");
   const [namaBendahara, setNamaBendahara] = useState("Bendahara Jimpitan");
-  const [namaPemeriksa, setNamaPemeriksa] = useState("Koordinator Ronda / Seksi Keamanan");
   const [catatanTambahan, setCatatanTambahan] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+
+  // Data Pengeluaran Rinci
+  const [listPengeluaran, setListPengeluaran] = useState([]);
+  const [loadingPengeluaran, setLoadingPengeluaran] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingPengeluaran(true);
+    fetch(`${ENDPOINT_BASE_URL}/api/pengeluaran/${year}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (isMounted) {
+          setListPengeluaran(data.pengeluaran || []);
+        }
+      })
+      .catch((err) => {
+        console.error("Gagal mengambil data pengeluaran tahunan:", err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingPengeluaran(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [year]);
 
   // Perhitungan Keuangan
   const saldoAwalTahun = rows[0]?.saldo_sebelumnya || 0;
   const surplusDefisit = totalPemasukan - totalPengeluaran;
   const saldoAkhirTahun = saldoAwalTahun + surplusDefisit;
+
+  const totalPengeluaranDaftar = listPengeluaran.reduce(
+    (acc, curr) => acc + (Number(curr.nominal) || 0),
+    0
+  );
 
   const handlePrint = () => {
     window.print();
@@ -85,6 +139,14 @@ export default function CetakLaporanTutupBuku({
             margin: 12mm 15mm;
           }
 
+          thead {
+            display: table-header-group;
+          }
+
+          tfoot {
+            display: table-footer-group;
+          }
+
           table {
             page-break-inside: auto;
           }
@@ -108,7 +170,7 @@ export default function CetakLaporanTutupBuku({
               <span>📄</span> Pratinjau Laporan Keuangan Tutup Buku {year}
             </h2>
             <p className="text-xs text-muted">
-              Format resmi laporan pertanggungjawaban tutup buku kas tahunan.
+              Format resmi laporan pertanggungjawaban tutup buku kas tahunan lengkap dengan daftar pengeluaran.
             </p>
           </div>
 
@@ -119,7 +181,7 @@ export default function CetakLaporanTutupBuku({
               className="text-xs !py-2 !px-3"
               onClick={() => setShowSettings(!showSettings)}
             >
-              {showSettings ? "Sembunyikan Pengaturan" : "⚙️ Sesuaikan Pejabat / TTD"}
+              {showSettings ? "Sembunyikan Pengaturan" : "⚙️ Sesuaikan Kop / Pejabat / TTD"}
             </Button>
             <Button
               type="button"
@@ -144,16 +206,40 @@ export default function CetakLaporanTutupBuku({
         {/* Form Penyesuaian Nama Pejabat & Tanggal (Collapsible) */}
         {showSettings && (
           <div className="mt-4 pt-4 border-t border-line grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+            <div className="sm:col-span-1">
+              <label className="block font-medium text-muted mb-1">
+                Nama Paguyuban / Kop Surat
+              </label>
+              <input
+                type="text"
+                value={namaOrganisasi}
+                onChange={(e) => setNamaOrganisasi(e.target.value)}
+                className="w-full rounded-lg border border-line p-2 text-ink"
+                placeholder="PAGUYUBAN WARGA GBK TEMPEL 2"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block font-medium text-muted mb-1">
+                Alamat Sekretariat (Kop Surat)
+              </label>
+              <input
+                type="text"
+                value={alamatSekretariat}
+                onChange={(e) => setAlamatSekretariat(e.target.value)}
+                className="w-full rounded-lg border border-line p-2 text-ink"
+                placeholder="Contoh: Sekretariat: Perumahan Griya Bhina Karya (GBK) Tempel 2, Gatak, Sukoharjo"
+              />
+            </div>
             <div>
               <label className="block font-medium text-muted mb-1">
-                Lokasi Pengesahan
+                Kota / Lokasi Pengesahan
               </label>
               <input
                 type="text"
                 value={lokasi}
                 onChange={(e) => setLokasi(e.target.value)}
                 className="w-full rounded-lg border border-line p-2 text-ink"
-                placeholder="Contoh: Tempel 2"
+                placeholder="Contoh: Sukoharjo"
               />
             </div>
             <div>
@@ -192,19 +278,7 @@ export default function CetakLaporanTutupBuku({
                 placeholder="Nama Bendahara"
               />
             </div>
-            <div>
-              <label className="block font-medium text-muted mb-1">
-                Nama / Jabatan Pemeriksa
-              </label>
-              <input
-                type="text"
-                value={namaPemeriksa}
-                onChange={(e) => setNamaPemeriksa(e.target.value)}
-                className="w-full rounded-lg border border-line p-2 text-ink"
-                placeholder="Nama Seksi Ronda / Pemeriksa"
-              />
-            </div>
-            <div>
+            <div className="sm:col-span-2">
               <label className="block font-medium text-muted mb-1">
                 Catatan Tambahan (Opsional)
               </label>
@@ -233,15 +307,15 @@ export default function CetakLaporanTutupBuku({
             </div>
             <div className="text-left">
               <h1 className="text-lg font-black tracking-wide uppercase text-black">
-                PAGUYUBAN WARGA GBK TEMPEL 2
+                {namaOrganisasi}
               </h1>
               <p className="text-xs font-semibold text-gray-700">
-                PENGELOLA DANA KAS JIMPITAN & SOSIAL LINGKUNGAN
+                PENGELOLA DANA KAS JIMPITAN &amp; SOSIAL LINGKUNGAN
               </p>
             </div>
           </div>
           <p className="text-[11px] text-gray-600">
-            Sekretariat: RT 02 / Lingkungan Tempel 2, Caturtunggal, Depok, Sleman, D.I. Yogyakarta
+            {alamatSekretariat}
           </p>
           <div className="mt-2 border-t border-black border-dashed"></div>
         </div>
@@ -403,10 +477,82 @@ export default function CetakLaporanTutupBuku({
           </div>
         </div>
 
-        {/* BAGIAN III: CATATAN ATAS LAPORAN KEUANGAN (CALK) */}
+        {/* BAGIAN III: RINCIAN REALISASI PENGELUARAN KAS */}
+        <div className="mb-6">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-black bg-gray-100 p-2 border-l-4 border-black mb-3 flex items-center justify-between">
+            <span>III. RINCIAN REALISASI PENGELUARAN KAS TAHUN {year}</span>
+            <span className="text-[10px] font-normal lowercase text-gray-600">
+              ({listPengeluaran.length} transaksi)
+            </span>
+          </h3>
+
+          {loadingPengeluaran ? (
+            <div className="p-4 text-center text-xs text-gray-500 border border-gray-300 rounded-lg">
+              Memuat data rincian pengeluaran kas...
+            </div>
+          ) : listPengeluaran.length === 0 ? (
+            <div className="p-4 text-center text-xs italic text-gray-500 border border-gray-300 rounded-lg">
+              Tidak ada catatan transaksi pengeluaran kas pada tahun {year}.
+            </div>
+          ) : (
+            <div className="border border-black rounded-lg overflow-hidden">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="bg-gray-200 border-b border-black text-center font-bold text-black uppercase">
+                    <th className="p-2 border-r border-gray-300 w-8">No</th>
+                    <th className="p-2 border-r border-gray-300 text-center w-24">Tanggal</th>
+                    <th className="p-2 border-r border-gray-300 text-left">Uraian / Keperluan Pengeluaran</th>
+                    <th className="p-2 border-r border-gray-300 text-left w-36">Penanggung Jawab</th>
+                    <th className="p-2 text-right w-28">Nominal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {listPengeluaran.map((item, idx) => {
+                    const isOdd = idx % 2 === 1;
+                    const nominalVal = Number(item.nominal) || 0;
+                    return (
+                      <tr
+                        key={item.id || idx}
+                        className={`border-b border-gray-300 ${isOdd ? "bg-gray-50/70" : "bg-white"}`}
+                      >
+                        <td className="p-1.5 border-r border-gray-300 text-center font-medium">
+                          {idx + 1}
+                        </td>
+                        <td className="p-1.5 border-r border-gray-300 text-center whitespace-nowrap text-gray-800">
+                          {formatTanggalIndo(item.tanggal)}
+                        </td>
+                        <td className="p-1.5 border-r border-gray-300 font-medium text-gray-900 whitespace-pre-line">
+                          {item.keterangan || "-"}
+                        </td>
+                        <td className="p-1.5 border-r border-gray-300 text-gray-700 whitespace-nowrap">
+                          {item.penanggung_jawab || "-"}
+                        </td>
+                        <td className="p-1.5 text-right font-mono font-medium text-red-800 whitespace-nowrap">
+                          {rupiahFormat(nominalVal)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-gray-200 border-t-2 border-black font-bold text-black">
+                    <td colSpan={4} className="p-2 border-r border-gray-400 text-center uppercase tracking-wide">
+                      Total Realisasi Pengeluaran Kas Tahun {year}
+                    </td>
+                    <td className="p-2 text-right font-mono font-black text-red-900 whitespace-nowrap">
+                      {rupiahFormat(totalPengeluaranDaftar)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* BAGIAN IV: CATATAN ATAS LAPORAN KEUANGAN (CALK) */}
         <div className="mb-6 p-3 bg-gray-50 border border-gray-300 rounded-lg text-xs leading-normal">
           <h4 className="font-bold text-black uppercase mb-1.5">
-            III. Catatan Rekonsiliasi &amp; Ketetapan Tutup Buku:
+            IV. Catatan Rekonsiliasi &amp; Ketetapan Tutup Buku:
           </h4>
           <ol className="list-decimal pl-4 space-y-1 text-gray-700">
             <li>
@@ -418,7 +564,7 @@ export default function CetakLaporanTutupBuku({
               <b>Saldo Awal Tahun Anggaran {Number(year) + 1}</b>.
             </li>
             <li>
-              Seluruh rekapitulasi data telah disinkronkan dan diaudit silang dengan sistem pencatatan jimpitan harian serta bukti pengeluaran kas.
+              Seluruh rekapitulasi data pemasukan dan {listPengeluaran.length} item rincian pengeluaran kas telah disinkronkan dan diaudit silang dengan sistem pencatatan jimpitan harian serta bukti pengeluaran kas.
             </li>
             {catatanTambahan && (
               <li className="font-medium text-black">
@@ -428,13 +574,13 @@ export default function CetakLaporanTutupBuku({
           </ol>
         </div>
 
-        {/* BAGIAN IV: LEMBAR PENGESAHAN (TANDA TANGAN RESMI) */}
+        {/* BAGIAN V: LEMBAR PENGESAHAN (TANDA TANGAN RESMI) */}
         <div className="signature-section mt-8 pt-4">
           <div className="text-right text-xs mb-4 text-gray-800">
             {lokasi}, {tanggalDokumen}
           </div>
 
-          <div className="grid grid-cols-3 gap-4 text-center text-xs">
+          <div className="grid grid-cols-2 gap-8 text-center text-xs max-w-2xl mx-auto">
             {/* Kolom 1: Ketua Paguyuban */}
             <div className="flex flex-col justify-between h-32">
               <div>
@@ -442,31 +588,19 @@ export default function CetakLaporanTutupBuku({
                 <p className="font-bold text-black uppercase">Ketua Paguyuban GBK</p>
               </div>
               <div>
-                <p className="border-b border-black w-40 mx-auto"></p>
+                <p className="border-b border-black w-44 mx-auto"></p>
                 <p className="font-bold text-black mt-1">{namaKetua}</p>
               </div>
             </div>
 
-            {/* Kolom 2: Koordinator Ronda / Pemeriksa */}
-            <div className="flex flex-col justify-between h-32">
-              <div>
-                <p className="font-semibold text-gray-700">Diverifikasi &amp; Diperiksa,</p>
-                <p className="font-bold text-black uppercase">Koordinator Ronda</p>
-              </div>
-              <div>
-                <p className="border-b border-black w-40 mx-auto"></p>
-                <p className="font-bold text-black mt-1">{namaPemeriksa}</p>
-              </div>
-            </div>
-
-            {/* Kolom 3: Bendahara */}
+            {/* Kolom 2: Bendahara */}
             <div className="flex flex-col justify-between h-32">
               <div>
                 <p className="font-semibold text-gray-700">Dibuat &amp; Ditutup oleh,</p>
                 <p className="font-bold text-black uppercase">Bendahara Jimpitan</p>
               </div>
               <div>
-                <p className="border-b border-black w-40 mx-auto"></p>
+                <p className="border-b border-black w-44 mx-auto"></p>
                 <p className="font-bold text-black mt-1">{namaBendahara}</p>
               </div>
             </div>

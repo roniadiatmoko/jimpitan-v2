@@ -75,6 +75,15 @@ export function IconWarga(props) {
   );
 }
 
+export function IconJadwal(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M16 2v4M8 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+      <path d="m9 16 2 2 4-4" />
+    </svg>
+  );
+}
+
 export function IconKalender(props) {
   return (
     <svg {...base} {...props}>
@@ -116,6 +125,16 @@ export function IconClose(props) {
   );
 }
 
+export function IconKey(props) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="m21 3-9.5 9.5" />
+      <path d="m15.5 7.5 3 3" />
+    </svg>
+  );
+}
+
 export function IconLogout(props) {
   return (
     <svg {...base} strokeWidth={2} {...props}>
@@ -141,6 +160,24 @@ export function IconCloudSync(props) {
       <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
       <path d="M12 12v9" />
       <path d="m8 17 4 4 4-4" />
+    </svg>
+  );
+}
+
+export function IconUpdate(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M21.5 2v6h-6M2.5 22v-6h6" />
+      <path d="M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
+    </svg>
+  );
+}
+
+export function IconHomeFinance(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
+      <path d="M9 21V12h6v9" />
     </svg>
   );
 }

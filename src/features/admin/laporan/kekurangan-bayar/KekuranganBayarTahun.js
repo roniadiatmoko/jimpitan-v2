@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ENDPOINT_BASE_URL, homeList, months } from "../../../../shared/config";
+import { ENDPOINT_BASE_URL, homeList, months, API_SECRET_KEY } from "../../../../shared/config";
 import { rupiahFormat } from "../../../../shared/helpers/MoneyHeper";
 import Card from "../../../../shared/components/ui/Card";
 import Button from "../../../../shared/components/ui/Button";
@@ -23,6 +23,8 @@ export default function KekuranganBayarTahun() {
   const [loadingRef, setLoadingRef] = useState(false);
   const [refError, setRefError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [selectedMonthsToPay, setSelectedMonthsToPay] = useState([]);
+  const [isPaying, setIsPaying] = useState(false);
 
   const yearOptions = useMemo(() => {
     const start = currentYear - 5;
@@ -183,6 +185,223 @@ export default function KekuranganBayarTahun() {
     }
   }, [showDetailModal, selectedDetail]);
 
+  const monthsWithDeficiency = useMemo(() => {
+    if (!selectedDetail) return [];
+    return months
+      .filter((month) => month.value <= selectedEndMonth)
+      .filter((month) => {
+        const key = month.label.toLowerCase();
+        return Number(selectedDetail[key]) > 0;
+      })
+      .map((month) => {
+        const key = month.label.toLowerCase();
+        const days = Number(selectedDetail[key]) || 0;
+        return {
+          value: month.value,
+          label: month.label,
+          key,
+          days,
+          nominal: days * 500,
+          periodStr: `${year}-${String(month.value).padStart(2, "0")}`,
+        };
+      });
+  }, [selectedDetail, selectedEndMonth, year]);
+
+  useEffect(() => {
+    if (showDetailModal && selectedDetail) {
+      const availableMonthValues = months
+        .filter((month) => month.value <= selectedEndMonth)
+        .filter(
+          (month) => Number(selectedDetail[month.label.toLowerCase()]) > 0
+        )
+        .map((month) => month.value);
+      setSelectedMonthsToPay(availableMonthValues);
+    } else {
+      setSelectedMonthsToPay([]);
+    }
+  }, [showDetailModal, selectedDetail, selectedEndMonth]);
+
+  const toggleSelectMonth = (monthValue) => {
+    setSelectedMonthsToPay((prev) =>
+      prev.includes(monthValue)
+        ? prev.filter((v) => v !== monthValue)
+        : [...prev, monthValue].sort((a, b) => a - b)
+    );
+  };
+
+  const toggleSelectAllMonths = () => {
+    if (selectedMonthsToPay.length === monthsWithDeficiency.length) {
+      setSelectedMonthsToPay([]);
+    } else {
+      setSelectedMonthsToPay(monthsWithDeficiency.map((m) => m.value));
+    }
+  };
+
+  const selectedPaymentSummary = useMemo(() => {
+    const selectedList = monthsWithDeficiency.filter((m) =>
+      selectedMonthsToPay.includes(m.value)
+    );
+    const totalDays = selectedList.reduce((sum, m) => sum + m.days, 0);
+    const totalNominal = totalDays * 500;
+    return {
+      selectedList,
+      totalDays,
+      totalNominal,
+    };
+  }, [monthsWithDeficiency, selectedMonthsToPay]);
+
+  const handlePaySelectedMonths = async () => {
+    if (selectedPaymentSummary.totalDays === 0) {
+      Swal.fire(
+        "Pilih Bulan",
+        "Silakan pilih setidaknya 1 bulan yang ingin dibayarkan.",
+        "warning"
+      );
+      return;
+    }
+
+    const defaultNominal = selectedPaymentSummary.totalNominal;
+    const formattedDefault = rupiahFormat(defaultNominal).replace(/\u00A0/g, " ");
+    const monthNamesList = selectedPaymentSummary.selectedList
+      .map((m) => `${m.label} (${rupiahFormat(m.nominal).replace(/\u00A0/g, " ")})`)
+      .join(", ");
+
+    const { value: formValues } = await Swal.fire({
+      title: `Bayar Jimpitan Rumah No. ${selectedDetail.nomor_rumah}`,
+      html: `
+        <div style="text-align: left; font-size: 13px; color: #374151; line-height: 1.6;">
+          <div style="background: #f3f4f6; padding: 10px 14px; border-radius: 8px; margin-bottom: 14px; border-left: 4px solid #10b981;">
+            <div><strong>Penghuni:</strong> ${homeMap[selectedDetail.nomor_rumah]?.nama || "-"}</div>
+            <div><strong>Bulan Terpilih:</strong> ${monthNamesList}</div>
+            <div style="margin-top: 4px; font-weight: 600; color: #047857;">Total Tagihan Terpilih: ${formattedDefault} (${selectedPaymentSummary.totalDays} hari)</div>
+          </div>
+          
+          <label style="display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px;">
+            Nominal yang Dibayarkan (Rp):
+          </label>
+          <input 
+            id="swal-input-nominal" 
+            type="number" 
+            step="500" 
+            min="500" 
+            value="${defaultNominal}" 
+            class="swal2-input" 
+            style="width: 100%; margin: 0 0 10px 0; font-size: 16px; font-weight: bold; padding: 10px; border-radius: 6px; border: 1px solid #d1d5db;"
+            placeholder="Masukkan nominal bayar"
+          />
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button type="button" id="btn-quick-full" style="padding: 4px 10px; font-size: 11px; background: #e0e7ff; color: #3730a3; border: 1px solid #c7d2fe; border-radius: 4px; cursor: pointer;">
+              ⚡ Bayar Penuh (${formattedDefault})
+            </button>
+          </div>
+          <div style="font-size: 11px; color: #6b7280; background: #fffbeb; padding: 8px 12px; border-radius: 6px; border: 1px solid #fef3c7;">
+            💡 <em>Pembayaran otomatis dialokasikan dari bulan terlama ke bulan terbaru secara kronologis. Jika nominal kurang dari total tagihan, bulan berikutnya tetap tercatat sebagai kekurangan di laporan.</em>
+          </div>
+        </div>
+      `,
+      didOpen: () => {
+        const input = document.getElementById("swal-input-nominal");
+        const btnFull = document.getElementById("btn-quick-full");
+        if (btnFull && input) {
+          btnFull.addEventListener("click", () => {
+            input.value = defaultNominal;
+            input.focus();
+          });
+        }
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      },
+      showCancelButton: true,
+      confirmButtonText: "Konfirmasi & Simpan Pembayaran",
+      cancelButtonText: "Batal",
+      confirmButtonColor: "#10b981",
+      cancelButtonColor: "#6b7280",
+      focusConfirm: false,
+      preConfirm: () => {
+        const input = document.getElementById("swal-input-nominal");
+        const val = Number(input?.value);
+        if (!val || val < 500) {
+          Swal.showValidationMessage("Nominal pembayaran minimal Rp 500 (1 hari jimpitan)!");
+          return false;
+        }
+        return { nominal: val };
+      },
+    });
+
+    if (!formValues) return;
+
+    setIsPaying(true);
+    Swal.fire({
+      title: "Menyimpan Pembayaran...",
+      text: "Mohon tunggu, data rapel harian sedang dicatat ke database.",
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading();
+      },
+    });
+
+    try {
+      const response = await fetch(`${ENDPOINT_BASE_URL}/api/rapel/bayar-multi-bulan`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          secret_key: API_SECRET_KEY,
+          nomor_rumah: selectedDetail.nomor_rumah,
+          nominal: formValues.nominal,
+          daftar_bulan: selectedPaymentSummary.selectedList.map((m) => m.periodStr),
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok || result.status !== "OK") {
+        throw new Error(result.message || "Gagal mencatat pembayaran rapel.");
+      }
+
+      await fetchKekuranganTahun(year);
+
+      const rincianHasilHtml = (result.hasil_per_bulan || [])
+        .map((h) => {
+          const mObj = months.find((m) => `${year}-${String(m.value).padStart(2, "0")}` === h.bulan);
+          const mLabel = mObj ? mObj.label : h.bulan;
+          if (h.status === "LUNAS") {
+            return `<li><strong>${mLabel}</strong>: <span style="color: #059669;">Lunas (${h.hari_disimpan} hari / ${rupiahFormat(h.nominal_disimpan)})</span></li>`;
+          } else if (h.status === "SEBAGIAN") {
+            return `<li><strong>${mLabel}</strong>: <span style="color: #d97706;">Sebagian terbayar (${h.hari_disimpan} hari / ${rupiahFormat(h.nominal_disimpan)})</span>, <span style="color: #dc2626;">sisa ${h.sisa_hari_belum_lunas} hari (${rupiahFormat(h.sisa_nominal_belum_lunas)})</span></li>`;
+          } else {
+            return `<li><strong>${mLabel}</strong>: Sudah lunas sebelumnya</li>`;
+          }
+        })
+        .join("");
+
+      Swal.fire({
+        title: "Pembayaran Berhasil Dicatat! 🎉",
+        html: `
+          <div style="text-align: left; font-size: 13px; line-height: 1.6;">
+            <p style="margin-bottom: 8px;"><strong>Rumah No. ${selectedDetail.nomor_rumah} (${homeMap[selectedDetail.nomor_rumah]?.nama || "-"}):</strong></p>
+            <p>• Total hari terisi: <strong>${result.total_hari_disimpan} hari (${rupiahFormat(result.total_nominal_disimpan)})</strong></p>
+            ${result.kelebihan_nominal > 0 ? `<p style="color: #059669;">• Kelebihan dana: <strong>${rupiahFormat(result.kelebihan_nominal)}</strong> (karena semua tagihan telah lunas)</p>` : ""}
+            <div style="margin-top: 10px; background: #f9fafb; padding: 10px; border-radius: 6px; border: 1px solid #e5e7eb;">
+              <strong>Rincian Hasil per Bulan:</strong>
+              <ul style="margin: 6px 0 0 16px; padding: 0;">
+                ${rincianHasilHtml}
+              </ul>
+            </div>
+          </div>
+        `,
+        icon: "success",
+      });
+
+      setShowDetailModal(false);
+    } catch (err) {
+      console.error(err);
+      Swal.fire("Gagal", err.message || "Terjadi kesalahan saat memproses pembayaran.", "error");
+    } finally {
+      setIsPaying(false);
+    }
+  };
+
   const buildWhatsappMessage = () => {
     if (!selectedDetail) return "";
 
@@ -316,7 +535,7 @@ export default function KekuranganBayarTahun() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          secret_key: "rahasiakita123",
+          secret_key: API_SECRET_KEY,
           pesan,
           no_hp: refWarga.no_hp,
         }),
@@ -674,31 +893,93 @@ export default function KekuranganBayarTahun() {
                 </div>
 
                 <div className="rounded-xl border border-line bg-white p-4">
-                  <div className="mb-3 text-sm font-semibold text-ink">
-                    Rincian per bulan
+                  <div className="mb-3 flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-ink">
+                        Rincian per Bulan & Pembayaran
+                      </div>
+                      <div className="text-xs text-muted">
+                        Centang bulan yang ingin dibayar, lalu masukkan nominal
+                      </div>
+                    </div>
+                    {monthsWithDeficiency.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={toggleSelectAllMonths}
+                        className="text-xs font-medium text-accent hover:underline"
+                      >
+                        {selectedMonthsToPay.length === monthsWithDeficiency.length
+                          ? "Batal Pilih Semua"
+                          : "Pilih Semua"}
+                      </button>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    {months
-                      .filter((month) => month.value <= selectedEndMonth)
-                      .filter((month) => {
-                        const key = month.label.toLowerCase();
-                        return Number(selectedDetail[key]) > 0;
-                      })
-                      .map((month) => {
-                        const key = month.label.toLowerCase();
-                        const days = Number(selectedDetail[key]) || 0;
-                        const nominal = days * 500;
+
+                  {monthsWithDeficiency.length > 0 ? (
+                    <div className="space-y-2">
+                      {monthsWithDeficiency.map((month) => {
+                        const isChecked = selectedMonthsToPay.includes(month.value);
                         return (
                           <div
                             key={month.value}
-                            className="flex items-center justify-between border-b border-line pb-2 text-sm text-ink"
+                            onClick={() => toggleSelectMonth(month.value)}
+                            className={`flex items-center justify-between rounded-lg border p-2.5 text-sm transition cursor-pointer select-none ${
+                              isChecked
+                                ? "border-emerald-300 bg-emerald-50/50 text-emerald-950 font-medium"
+                                : "border-line bg-surface/50 text-muted hover:bg-surface"
+                            }`}
                           >
-                            <span>{month.label}</span>
-                            <span>{rupiahFormat(nominal)}</span>
+                            <div className="flex items-center gap-2.5">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {}}
+                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              />
+                              <span>
+                                {month.label}
+                                <span className="ml-1.5 text-xs text-muted font-normal">
+                                  ({month.days} hari)
+                                </span>
+                              </span>
+                            </div>
+                            <span className={isChecked ? "font-semibold text-emerald-700" : "text-muted"}>
+                              {rupiahFormat(month.nominal)}
+                            </span>
                           </div>
                         );
                       })}
-                  </div>
+
+                      <div className="mt-4 pt-3 border-t border-line space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-muted">
+                            Bulan terpilih: <strong>{selectedPaymentSummary.selectedList.length} bulan</strong>
+                          </span>
+                          <span className="text-ink font-semibold">
+                            Total: {selectedPaymentSummary.totalDays} hari ({rupiahFormat(selectedPaymentSummary.totalNominal)})
+                          </span>
+                        </div>
+
+                        <Button
+                          variant="success"
+                          className="w-full flex items-center justify-center gap-2 !py-2.5 text-sm font-semibold shadow-sm"
+                          disabled={selectedPaymentSummary.totalDays === 0 || isPaying}
+                          onClick={handlePaySelectedMonths}
+                        >
+                          <span>💳</span>
+                          {isPaying
+                            ? "Memproses Pembayaran..."
+                            : selectedPaymentSummary.totalDays === 0
+                            ? "Pilih Bulan untuk Membayar"
+                            : `Bayar Bulan Terpilih (${rupiahFormat(selectedPaymentSummary.totalNominal)})`}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="py-4 text-center text-xs text-muted">
+                      Tidak ada tunggakan jimpitan di bulan-bulan terpilih.
+                    </div>
+                  )}
                 </div>
 
                 <div className="rounded-xl border border-line bg-surface p-4 text-right">
